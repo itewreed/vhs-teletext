@@ -46,7 +46,7 @@ def celp():
                    'or only frame 0 (channel 1) in two channel mode.')
 @click.option('-o', '--output', type=click.File('wb'),
               help='Write audio to this WAV file (8 kHz, 16 bit, mono) instead of playing it.')
-@click.option('-l', '--lsf-lut', type=click.Choice(CELPDecoder.lsf_vector_quantizers.keys()), default='ong', show_default=True,
+@click.option('-l', '--lsf-lut', type=click.Choice(CELPDecoder.lsf_vector_quantizers.keys()), default='suddle', show_default=True,
               help='Line spectral frequency (LSF) quantizer table.')
 @click.option('-g', '--gain-lut', type=click.Choice(CELPDecoder.vec_gain_quantizers.keys()), default='audetel', show_default=True,
               help='Excitation vector gain quantizer table.')
@@ -75,7 +75,7 @@ def play(progress, frame, output, lsf_lut, gain_lut, excitation, packets):
     Examples:
       teletext celp play -d 4 stream.t42
       teletext celp play -d 4 -f 0 -o frame0.wav stream.t42
-      teletext celp play -d 4 -l suddle -g unknown stream.t42
+      teletext celp play -d 4 -l suddle-ong9 -g unknown stream.t42
       teletext celp play -d 4 -x gaussian -o gaussian.wav stream.t42
     """
     dec = CELPDecoder(lsf_lut=lsf_lut, vec_gain_lut=gain_lut, excitation=excitation)

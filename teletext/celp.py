@@ -112,6 +112,12 @@ class CELPDecoder:
         ]),
     }
 
+    # Suddle's table with the LSF 9 row from Ong. On real recordings Suddle's
+    # LSF 9 row puts LSF 9 on average only 37 Hz above LSF 8 and 700 Hz below
+    # LSF 10; Ong's row puts it in between, 440 Hz above LSF 8.
+    lsf_vector_quantizers['suddle-ong9'] = lsf_vector_quantizers['suddle'].copy()
+    lsf_vector_quantizers['suddle-ong9'][8] = lsf_vector_quantizers['ong'][8]
+
     lsf_weights = np.array([1/8, 3/8, 5/8, 7/8])
 
     vec_gain_quantizers = {
@@ -148,7 +154,7 @@ class CELPDecoder:
         'gaussian': np.random.default_rng(0).normal(0, 1 / np.sqrt(3), size=(256, 40)),
     }
 
-    def __init__(self, lsf_lut='ong', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
+    def __init__(self, lsf_lut='suddle', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
         self.lsf_lut = lsf_lut
         self.excitation_codebook = self.excitation_codebooks[excitation]
         self.lsf_vector_quantization = self.lsf_vector_quantizers[lsf_lut]
