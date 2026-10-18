@@ -66,6 +66,19 @@ class TestDecoder(unittest.TestCase):
                 self.assertEqual(audio.shape, (10 * 160, ))
                 self.assertEqual(audio.dtype, np.int16)
 
+    def test_pame_excitation(self):
+        dec = CELPDecoder(excitation='pame')
+        # index below the lag: pulses every lag samples starting at the index
+        np.testing.assert_array_equal(np.nonzero(dec.excitation(5, 30))[0], [5, 35])
+        # next lag/2 indexes: pulses every lag/2 samples
+        np.testing.assert_array_equal(np.nonzero(dec.excitation(100 + 3, 100))[0], [3])
+        # pulse outside the subframe gives a silent vector
+        self.assertFalse(dec.excitation(60, 100).any())
+        # remaining indexes select the clipped codebook
+        np.testing.assert_array_equal(dec.excitation(200, 100), CELPDecoder.excitation_codebooks['clipped'][50])
+        for idx, lag in ((0, 20), (255, 20), (255, 147)):
+            self.assertTrue(np.all(np.isfinite(dec.excitation(idx, lag))))
+
     def test_deterministic(self):
         np.testing.assert_array_equal(self.decode(), self.decode())
 

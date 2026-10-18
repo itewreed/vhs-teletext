@@ -52,7 +52,8 @@ def celp():
               help='Excitation vector gain quantizer table.')
 @click.option('-x', '--excitation', type=click.Choice(CELPDecoder.excitation_codebooks.keys()), default='noise', show_default=True,
               help='Stand-in for the unknown excitation codebook. noise: random noise, ignores the vector index. '
-                   'gaussian: fixed random vector per index.')
+                   'gaussian: fixed random vector per index. clipped: overlapping centre-clipped random codebook. '
+                   'pame: pitch-adaptive pulse trains followed by the clipped codebook (index mapping guessed).')
 @packetreader(filtered='data', mag_hist=None, row_hist=None, err_hist=None, pass_progress=True)
 def play(progress, frame, output, lsf_lut, gain_lut, excitation, packets):
     """Play or save audio decoded from CELP packets.

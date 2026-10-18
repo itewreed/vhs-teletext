@@ -145,17 +145,31 @@ class CELPDecoder:
          1.062,  1.117,  1.193,  1.289,  1.394,  1.540,  1.765,  1.991,
     ])
 
-    # The real excitation (fixed) codebook is not known. These are stand-ins:
+    # The real excitation codebook is not known. These are stand-ins:
     # 'noise' ignores the vector index and plays running random noise,
-    # 'gaussian' is a fixed random codebook selected by the vector index.
-    # The real codebook, once found, can be added here as a (256, 40) array.
+    # 'gaussian' is a fixed random codebook selected by the vector index,
+    # 'clipped' is an overlapping centre-clipped random codebook and 'pame'
+    # adds pitch-adaptive pulse trains in front of it, both as described by
+    # Kondoz, Evans and Suddle (Eurospeech 93). The real codebook, once found,
+    # can be added here as a (256, 40) array.
+    @staticmethod
+    def _clipped_codebook(size=256, length=40, shift=2, threshold=1.2):
+        seq = np.random.default_rng(0).normal(0, 1, size=(size - 1) * shift + length)
+        seq[np.abs(seq) < threshold] = 0
+        book = np.lib.stride_tricks.sliding_window_view(seq, length)[::shift].copy()
+        rms = np.sqrt(np.mean(book ** 2, axis=1, keepdims=True))
+        return book / np.maximum(rms, 1e-9) / np.sqrt(3)
+
     excitation_codebooks = {
         'noise': None,
         'gaussian': np.random.default_rng(0).normal(0, 1 / np.sqrt(3), size=(256, 40)),
+        'clipped': _clipped_codebook.__func__(),
+        'pame': _clipped_codebook.__func__(),
     }
 
     def __init__(self, lsf_lut='suddle-ong9', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
         self.lsf_lut = lsf_lut
+        self.excitation_type = excitation
         self.excitation_codebook = self.excitation_codebooks[excitation]
         self.lsf_vector_quantization = self.lsf_vector_quantizers[lsf_lut]
         self.vec_gain_quantization = self.vec_gain_quantizers[vec_gain_lut]
@@ -204,12 +218,34 @@ class CELPDecoder:
     # noise played through the filter when no excitation codebook is used
     wave = np.random.default_rng(0).uniform(-1, 1, size=(8000, ))
 
-    def excitation(self, vector_idx):
-        """Return the fixed codebook vector for an index."""
+    @staticmethod
+    def pulse_vector(phase, spacing, length=40):
+        """Unit pulses every spacing samples, starting at phase."""
+        vec = np.zeros((length, ))
+        vec[phase::spacing] = 1
+        if not vec.any():
+            return vec
+        return vec / np.sqrt(np.mean(vec ** 2)) / np.sqrt(3)
+
+    def excitation(self, vector_idx, lag=None):
+        """Return the excitation vector for an index.
+
+        For 'pame' the first indexes are pulse trains that depend on the
+        pitch lag of the subframe: lag phases with pulses every lag samples,
+        then, if the lag is longer than 40, lag/2 phases with pulses every
+        lag/2 samples. The remaining indexes select the clipped codebook.
+        """
         if self.excitation_codebook is None:
             pos = self.pos + np.arange(1, self.subframe_length + 1)
             self.pos += self.subframe_length
             return self.wave[pos % self.sample_rate]
+        if self.excitation_type == 'pame' and lag is not None:
+            if vector_idx < lag:
+                return self.pulse_vector(vector_idx, lag, self.subframe_length)
+            half = lag // 2 if lag > 2 * LtpCodebook.min_lag else 0
+            if vector_idx < lag + half:
+                return self.pulse_vector(vector_idx - lag, half, self.subframe_length)
+            return self.excitation_codebook[vector_idx - lag - half]
         return self.excitation_codebook[vector_idx]
 
     def apply_lpc_filter(self, lsf, signal):
@@ -230,8 +266,9 @@ class CELPDecoder:
 
         frame = np.empty((self.subframe_length * 4,), dtype=np.double)
         for subframe in range(4):
-            subframe_buf = (self.excitation(vector_idx[subframe]) * vector_gain[subframe]) + \
-                           (self.ltp_codebook.get(pitch_idx[subframe] + LtpCodebook.min_lag) * pitch_gain[subframe])
+            lag = pitch_idx[subframe] + LtpCodebook.min_lag
+            subframe_buf = (self.excitation(vector_idx[subframe], lag) * vector_gain[subframe]) + \
+                           (self.ltp_codebook.get(lag) * pitch_gain[subframe])
             self.ltp_codebook.insert(subframe_buf)
             p = subframe * self.subframe_length
             frame[p:p + self.subframe_length] = self.apply_lpc_filter(sub_lsf[subframe], subframe_buf)

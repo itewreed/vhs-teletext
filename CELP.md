@@ -101,10 +101,13 @@ Options:
   sounds the most intelligible (see "Open problems").
 * `-g/--gain-lut audetel|unknown` - quantizer table for the excitation vector
   gain. Default `audetel`.
-* `-x/--excitation noise|gaussian` - stand-in for the unknown excitation
-  codebook (see "Open problems" below). `noise` (default) plays running
-  random noise and ignores the vector index. `gaussian` uses a fixed random
-  vector for each of the 256 indexes. Both are reproducible from run to run.
+* `-x/--excitation noise|gaussian|clipped|pame` - stand-in for the unknown
+  excitation codebook (see "Open problems" below). `noise` (default) plays
+  running random noise and ignores the vector index. `gaussian` uses a fixed
+  random vector for each of the 256 indexes. `clipped` and `pame` follow the
+  codebook structure described in the Kondoz paper (see "Excitation
+  codebook" below), but with random contents. All are reproducible from run
+  to run.
 * `--start`, `--stop`, `--step`, `--limit` - select a range of packets by
   position in the file, as for other commands. For example, to decode the
   part of a recording containing one programme:
@@ -220,7 +223,7 @@ What is known and what is not:
 | Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. In silent passages almost all vector gains use the four smallest values. In voiced speech those four are used rarely, which matches their narrow cells in both tables; the index histogram fits `audetel` slightly better. |
 | Pitch lag                | Confirmed: in a recording with speech on channel 2, consecutive subframes of voiced speech have nearly the same lag (lag + 20 between 39 and 99 samples, 80-200 Hz), and the lag continues smoothly into the next frame of the same channel 70% of the time, but only 19% of the time into the other channel. Silent frames use a lag of about 80. |
 | Pitch gain table         | Source not recorded in the code, but consistent with the data: in strongly voiced speech most pitch gains are 0.85-1.06, and index 8 is used ten times less than its neighbours, which matches its very narrow cell (0.19 / 0.26 / 0.37). |
-| Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `-x gaussian`) are available. See "Excitation codebook" below for what the recordings show. |
+| Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `gaussian`, `clipped`, `pame`) are available. See "Excitation codebook" below for what the recordings show. |
 
 ### Excitation codebook
 
@@ -243,9 +246,35 @@ structure, although not enough to reconstruct the vectors:
   differs between recordings and channels (correlation near 0), so it cannot
   be used to estimate vector energies.
 
-The most promising sources for the real codebook are the Kondoz paper
-below, whose main contribution is the codebook, and chapter 7 of Suddle's
-thesis.
+The Kondoz paper (below) describes the codebook as "pitch adaptive mixed
+excitation" (PAME). Each subframe searches two parts of one codebook:
+
+* An adaptive part of unit pulse trains with pulses every D samples, where D
+  is the pitch lag of the subframe, in all D phase shifts. If D is longer
+  than twice the shortest lag, pulse trains every D/2 samples in D/2 phases
+  are added. These are searched first.
+* The rest of the indexes select vectors of an overlapping, centre-clipped
+  fixed codebook (each vector is the previous one shifted by a few samples,
+  small values set to zero). The paper also shapes this secondary excitation
+  with the short term predictor, and the decoder applies a postfilter and
+  adaptive gain control.
+
+The paper gives neither the clipped codebook values nor the order in which
+the two parts are numbered, and the recordings do not show it either: if
+the first D indexes were the pulse trains, voiced subframes should favour
+indexes below their lag, and the unused index ranges should move with the
+lag. Neither happens, so the index mapping of `-x pame` is a guess:
+
+* `-x clipped` - a reproducible random Gaussian sequence, centre-clipped at
+  1.2, with vector k starting at sample 2k. Ignores the pitch lag.
+* `-x pame` - indexes 0 to D-1 are pulse trains every D samples with phase
+  k, the next D/2 indexes (if D > 40) are pulse trains every D/2 samples,
+  the remaining indexes select the `clipped` vectors from 0 upwards.
+
+Neither reproduces the original speech, because the fixed vectors are
+random. The postfilter and spectral shaping are not implemented.
+
+The remaining source for the real codebook is chapter 7 of Suddle's thesis.
 
 Because the excitation codebook is missing, the output keeps the rough
 envelope and pitch of the original speech but sounds noisy or whispered.
