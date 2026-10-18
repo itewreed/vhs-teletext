@@ -63,9 +63,10 @@ The service byte of DCN 12 packets selects the channel mode (see "Packet
 format" below). In single channel mode the two frames of a packet follow
 each other in time. In "Two-channel mode using 2 VBI lines per frame"
 (service 5) frame 0 of every packet belongs to channel 1 and frame 1 to
-channel 2: on a recording in this mode the LSFs of consecutive frame 0s are
-correlated, while frame 0 and frame 1 of the same packet are as unrelated as
-two random frames. One packet per field arrives, so each channel gets 50
+channel 2. On recordings in this mode the LSFs and pitch of consecutive
+frame 0s are related, while frame 0 and frame 1 of the same packet are as
+unrelated as two random frames, and often only one channel carries speech
+while the other is silent. One packet per field arrives, so each channel gets 50
 frames of 20 ms per second, which is real time.
 
 `celp play` therefore decodes only channel 1 (frame 0) of two channel
@@ -213,10 +214,10 @@ What is known and what is not:
 | Bit layout               | Known, see above. Field boundaries are clearly visible in `celp plot`. |
 | Vector gain Hamming code | Verified: the table is a perfect Hamming (7,4) code over the top 4 bits of each 5 bit gain, every single bit error is corrected. Covered by `tests/test_celp.py`. |
 | Adaptive codebook        | Standard CELP structure, lags 20-147. The lag offset of 20 is assumed from the 7 bit field, as in FS-1016. |
-| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. Measured on a real two channel recording (about 60,000 packets), `suddle` gives LSF 8 above LSF 9 in 46-54% of frames, because its row for LSF 9 (2347-3202 Hz) overlaps the row for LSF 8. With `ong` only 3-9% of frames are out of order, almost all of them LSF 3 above LSF 4. `ong` is therefore the default. |
-| Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. On the recording above 95% of vector gains use the four smallest values, which fits a channel that is silent most of the time. |
-| Pitch lag continuity     | Unexplained: in loud passages of the recording above, the pitch lags of consecutive subframes are no more similar than random lags. In voiced speech they should change slowly, so either those passages are not speech or the lag field is not yet understood. |
-| Pitch gain table         | Source not recorded in the code.                                   |
+| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. Measured on five two channel recordings with enough audio, `suddle` puts LSF 8 above LSF 9 in 41-81% of frames on every recording, because its row for LSF 9 (2347-3202 Hz) overlaps the row for LSF 8. `ong` does not have this problem; its out of order rate is 3-56% depending on the recording quality, mostly among LSF 2-5. `ong` is therefore the default. |
+| Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. In silent passages almost all vector gains use the four smallest values. |
+| Pitch lag                | Confirmed: in a recording with speech on channel 2, consecutive subframes of voiced speech have nearly the same lag (lag + 20 between 39 and 99 samples, 80-200 Hz), and the lag continues smoothly into the next frame of the same channel 70% of the time, but only 19% of the time into the other channel. Silent frames use a lag of about 80. |
+| Pitch gain table         | Source not recorded in the code. Plausible: in voiced speech most pitch gains are 0.75-1.1. |
 | Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `-x gaussian`) are available. |
 
 Because the excitation codebook is missing, the output keeps the rough
