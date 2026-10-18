@@ -1,0 +1,180 @@
+CELP AUDIO
+----------
+
+Some teletext services carried compressed speech alongside the pages. The
+best known example is Audetel, a UK audio description trial for blind and
+partially sighted viewers in the 1990s, which sent a spoken description of the programme
+in the VBI of the TV signal. The speech is coded with CELP (code-excited
+linear prediction), a low bit rate speech codec, and transmitted in teletext
+independent data packets.
+
+`teletext celp` can find these packets in a t42 stream, decode them to audio
+and plot statistics about them. The decoder is experimental: the bit layout
+and several quantizer tables were reconstructed from published papers and
+from analysing recordings, and not all of them are known. Expect noise
+rather than clean speech.
+
+CELP support needs the `audio` extra:
+
+    pip3 install -e .[audio]
+
+`teletext celp` is not available if `spectrum` is not installed. `play`
+without `-o` also needs `miniaudio`.
+
+
+FINDING CELP PACKETS
+--------------------
+
+CELP audio is sent in packets 30 and 31 of magazine 4. Teletext calls these
+"data channels" (DCN), numbered 0-15: the low 3 bits are the magazine and
+bit 3 selects row 30 (0) or row 31 (1).
+
+| DCN | Packet | Content                                         |
+|-----|--------|-------------------------------------------------|
+| 4   | 4/30   | Programme-related audio (Audetel)               |
+| 12  | 4/31   | Programme-independent audio                     |
+
+To see whether a stream contains CELP packets, show rows 30 and 31 of
+magazine 4 as text:
+
+    teletext filter -m 4 -r 30 -r 31 -o text - stream.t42
+
+Each CELP packet is printed as one line, for example:
+
+    DCN: 4, Programme-related audio, S: AUDETEL, C: 0x2  8 dB  7983c1f3... 07ddc0d6...
+
+The fields are the data channel, the type of audio, the service byte (`S`),
+the control byte (`C`, with the volume level in dB and a `muted` flag) and
+the two audio frames as hex. If nothing is printed the stream has no CELP
+audio. Use `-o debug` instead of `-o text` to also see the packet number
+and error count of each line.
+
+Every `teletext celp` command needs the data channel to read, given with
+`-d/--dcn`. Use `-d 4` for Audetel.
+
+
+DECODING AUDIO
+--------------
+
+`teletext celp play` decodes the audio and plays it on the default sound
+output:
+
+    teletext celp play -d 4 stream.t42
+
+Add `-o` to write a WAV file (8 kHz, 16 bit, mono) instead:
+
+    teletext celp play -d 4 -o audio.wav stream.t42
+
+Options:
+
+* `-d/--dcn N` - data channel to decode (required, see above).
+* `-o/--output FILE` - write a WAV file instead of playing the audio.
+* `-f/--frame 0|1` - each packet holds two audio frames. By default both are
+  decoded, in order. `-f 0` or `-f 1` decodes only one of them and skips the
+  other, which is useful when investigating the format.
+* `-l/--lsf-lut ong|suddle` - quantizer table for the line spectral
+  frequencies (LSF), which describe the shape of the vocal tract. Default
+  `suddle`.
+* `-g/--gain-lut audetel|unknown` - quantizer table for the excitation vector
+  gain. Default `audetel`.
+* `--start`, `--stop`, `--step`, `--limit` - select a range of packets by
+  position in the file, as for other commands. For example, to decode the
+  part of a recording containing one programme:
+
+      teletext celp play -d 4 --start 100000 --stop 400000 -o prog.wav stream.t42
+
+* `--wst`, `--ts PID` - read WST or MPEG transport stream input, as for
+  other commands.
+* `--progress/--no-progress` - show or hide the progress bar.
+
+While decoding, the progress bar shows two error rates, for example
+`L:3%, VG:12%`:
+
+* `L` - percentage of frames whose decoded line spectral frequencies are not
+  in increasing order. Valid frames always have increasing LSFs, so these
+  frames are corrupt.
+* `VG` - percentage of vector gains where the Hamming check bits detected
+  an error.
+
+Both are reset each time the progress bar updates. High values mean that
+the recording is damaged, that the wrong data channel was selected, or that
+the quantizer tables do not match the service.
+
+The table names refer to their sources:
+
+| Table             | Source                                                                     |
+|-------------------|----------------------------------------------------------------------------|
+| `-l suddle`       | Suddle, *Speech Coding in Private and Broadcast Networks*, p. 121          |
+| `-l ong`          | Ong, *Source Reliant Error Control For Low Bit Rate Speech Communications*, p. 103 |
+| `-g audetel`      | Suddle, chapter 7                                                          |
+| `-g unknown`      | Suddle, chapter 5                                                          |
+
+
+PLOTTING STATISTICS
+-------------------
+
+`teletext celp plot` reads all CELP packets of a data channel and shows a
+matplotlib window. It is a tool for working out the format, not for
+listening:
+
+    teletext celp plot -d 4 --limit 100000 stream.t42
+
+There is one column per audio frame (0 and 1). The top row shows how often
+each of the 152 bits is set, coloured by parameter, which makes the field
+boundaries visible. The second row is a histogram of the vector gains
+grouped by their error correction bits. The remaining rows show the pitch
+gain, vector gain, pitch lag and vector index of every subframe over time.
+
+All packets are held in memory, so use `--limit` or `--start`/`--stop` with
+long recordings.
+
+
+PACKET FORMAT
+-------------
+
+A CELP packet is a normal 42 byte teletext packet:
+
+| Bytes | Content                                                          |
+|-------|------------------------------------------------------------------|
+| 0-1   | Magazine and row address (MRAG), magazine 4, row 30 or 31        |
+| 2     | Service byte, Hamming 8/4 coded                                  |
+| 3     | Control byte, Hamming 8/4 coded                                  |
+| 4-22  | Audio frame 0 (19 bytes = 152 bits)                              |
+| 23-41 | Audio frame 1 (19 bytes = 152 bits)                              |
+
+For DCN 4 a service byte of 0 means Audetel. The low 3 bits of the control
+byte select a level (0, 4, 8, 12, 18, 24 or 30 dB) and bit 3 mutes the
+audio. For DCN 12 the service byte selects single or two channel modes, or a
+user defined service if bit 3 is set.
+
+Each audio frame is 20 ms of speech at 8000 samples per second, split into
+4 subframes of 5 ms (40 samples). So one packet holds 40 ms of audio and
+real time playback needs 25 packets per second. The bits of a frame are read
+least significant bit first and contain:
+
+| Bits    | Fields   | Content                                              |
+|---------|----------|------------------------------------------------------|
+| 0-36    | 10       | LSF indexes (widths 3, 4, 4, 4, 4, 4, 4, 4, 3, 3)    |
+| 37-56   | 4 x 5    | Pitch (long term prediction) gain, one per subframe  |
+| 57-76   | 4 x 5    | Excitation vector gain, one per subframe             |
+| 77-104  | 4 x 7    | Pitch lag, one per subframe                          |
+| 105-136 | 4 x 8    | Excitation vector index, one per subframe            |
+| 137-148 | 4 x 3    | Hamming check bits for the vector gains              |
+| 149-151 | 3        | Always zero in good recordings                       |
+
+The decoder in `teletext/celp.py` works as follows:
+
+1. The LSF indexes are looked up in the selected LSF table and interpolated
+   between the previous and the current frame for each subframe.
+2. The vector gains are corrected with their Hamming check bits and looked up
+   in the selected gain table. Pitch gains use a fixed table.
+3. The excitation for each subframe is the sum of the scaled excitation
+   vector and the scaled past excitation at the pitch lag. The real
+   excitation codebook is not known, so random noise is used instead and
+   the vector index is not used yet.
+4. The excitation is passed through an LPC synthesis filter built from the
+   LSFs.
+
+Because the excitation codebook is missing, the output keeps the rough
+envelope and pitch of the original speech but sounds very noisy. Improving
+the tables and finding the codebook are open problems.
