@@ -154,7 +154,7 @@ class CELPDecoder:
         'gaussian': np.random.default_rng(0).normal(0, 1 / np.sqrt(3), size=(256, 40)),
     }
 
-    def __init__(self, lsf_lut='suddle', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
+    def __init__(self, lsf_lut='suddle-ong9', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
         self.lsf_lut = lsf_lut
         self.excitation_codebook = self.excitation_codebooks[excitation]
         self.lsf_vector_quantization = self.lsf_vector_quantizers[lsf_lut]

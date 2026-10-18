@@ -97,8 +97,8 @@ Options:
   the other. In two channel mode this selects the channel.
 * `-l/--lsf-lut ong|suddle|suddle-ong9` - quantizer table for the line
   spectral frequencies (LSF), which describe the shape of the vocal tract.
-  Default `suddle`, which sounds the most intelligible. `suddle-ong9` is
-  Suddle's table with the LSF 9 row from Ong (see "Open problems").
+  Default `suddle-ong9`: Suddle's table with the LSF 9 row from Ong, which
+  sounds the most intelligible (see "Open problems").
 * `-g/--gain-lut audetel|unknown` - quantizer table for the excitation vector
   gain. Default `audetel`.
 * `-x/--excitation noise|gaussian` - stand-in for the unknown excitation
@@ -134,7 +134,7 @@ The table names refer to their sources:
 |-------------------|----------------------------------------------------------------------------|
 | `-l suddle`       | Suddle, *Speech Coding in Private and Broadcast Networks*, p. 121          |
 | `-l ong`          | Ong, *Source Reliant Error Control For Low Bit Rate Speech Communications*, p. 103 |
-| `-l suddle-ong9`  | Suddle, with the LSF 9 row from Ong                                        |
+| `-l suddle-ong9`  | Suddle, with the LSF 9 row from Ong (default)                              |
 | `-g audetel`      | Suddle, chapter 7                                                          |
 | `-g unknown`      | Suddle, chapter 5                                                          |
 
@@ -216,7 +216,7 @@ What is known and what is not:
 | Bit layout               | Known, see above. Field boundaries are clearly visible in `celp plot`. |
 | Vector gain Hamming code | Verified: the table is a perfect Hamming (7,4) code over the top 4 bits of each 5 bit gain, every single bit error is corrected. Covered by `tests/test_celp.py`. |
 | Adaptive codebook        | Standard CELP structure, lags 20-147. The lag offset of 20 is assumed from the 7 bit field, as in FS-1016. |
-| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. Measured on five two channel recordings with enough audio, `suddle` puts LSF 8 above LSF 9 in 41-81% of frames on every recording, because its row for LSF 9 (2347-3202 Hz) overlaps the row for LSF 8. `ong` does not have this problem; its out of order rate is 3-56% depending on the recording quality, mostly among LSF 2-5. In voiced speech the mean decoded LSFs with `suddle` are 2684 Hz for LSF 8, 2720 Hz for LSF 9 and 3421 Hz for LSF 10, so LSF 9 sits almost on top of LSF 8. With Ong's LSF 9 row it is 3111 Hz, evenly between its neighbours, which suggests that Suddle's LSF 9 row is the misprinted one. The decoder sorts the LSFs before building the filter, so out of order values do not make it unstable. By ear `suddle` is more intelligible than `ong`, so it is the default; `suddle-ong9` combines both. The index histograms of the other rows fit `suddle` slightly better than `ong`. |
+| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. Measured on five two channel recordings with enough audio, `suddle` puts LSF 8 above LSF 9 in 41-81% of frames on every recording, because its row for LSF 9 (2347-3202 Hz) overlaps the row for LSF 8. `ong` does not have this problem; its out of order rate is 3-56% depending on the recording quality, mostly among LSF 2-5. In voiced speech the mean decoded LSFs with `suddle` are 2684 Hz for LSF 8, 2720 Hz for LSF 9 and 3421 Hz for LSF 10, so LSF 9 sits almost on top of LSF 8. With Ong's LSF 9 row it is 3111 Hz, evenly between its neighbours, which suggests that Suddle's LSF 9 row is the misprinted one. The decoder sorts the LSFs before building the filter, so out of order values do not make it unstable. By ear `suddle` is more intelligible than `ong`, and `suddle-ong9` (with `-g audetel`) is the most intelligible of all, so it is the default. The index histograms of the other rows fit `suddle` slightly better than `ong`. |
 | Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. In silent passages almost all vector gains use the four smallest values. In voiced speech those four are used rarely, which matches their narrow cells in both tables; the index histogram fits `audetel` slightly better. |
 | Pitch lag                | Confirmed: in a recording with speech on channel 2, consecutive subframes of voiced speech have nearly the same lag (lag + 20 between 39 and 99 samples, 80-200 Hz), and the lag continues smoothly into the next frame of the same channel 70% of the time, but only 19% of the time into the other channel. Silent frames use a lag of about 80. |
 | Pitch gain table         | Source not recorded in the code, but consistent with the data: in strongly voiced speech most pitch gains are 0.85-1.06, and index 8 is used ten times less than its neighbours, which matches its very narrow cell (0.19 / 0.26 / 0.37). |
