@@ -24,7 +24,7 @@ http://archive.teletextart.co.uk/
 
 See [HOW_IT_WORKS.md](HOW_IT_WORKS.md) for a description of the decoding
 algorithm and [TRAINING.md](TRAINING.md) for how the pattern tables used by
-the decoder are created.
+the decoder are created. [CELP.md](CELP.md) describes the CELP audio tools.
 
 
 INSTALLATION
@@ -301,6 +301,22 @@ serial inserter via `teletext serial`.
 
 The `examples/` directory contains scripts showing how to generate pages and
 services from Python.
+
+
+CELP AUDIO
+----------
+
+Some services, such as the Audetel audio description trials, sent CELP coded
+speech in packets 4/30 and 4/31. `teletext celp` (needs the `audio` extra)
+decodes this audio. Check for CELP packets, then play or save the audio of
+data channel 4:
+
+    teletext filter -m 4 -r 30 -r 31 -o text - stream.t42
+    teletext celp play -d 4 stream.t42
+    teletext celp play -d 4 -o audio.wav stream.t42
+
+The decoder is experimental. See [CELP.md](CELP.md) for all options and the
+packet format.
 
 
 TESTS
