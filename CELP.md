@@ -77,6 +77,10 @@ Options:
   `suddle`.
 * `-g/--gain-lut audetel|unknown` - quantizer table for the excitation vector
   gain. Default `audetel`.
+* `-x/--excitation noise|gaussian` - stand-in for the unknown excitation
+  codebook (see "Open problems" below). `noise` (default) plays running
+  random noise and ignores the vector index. `gaussian` uses a fixed random
+  vector for each of the 256 indexes. Both are reproducible from run to run.
 * `--start`, `--stop`, `--step`, `--limit` - select a range of packets by
   position in the file, as for other commands. For example, to decode the
   part of a recording containing one programme:
@@ -169,12 +173,44 @@ The decoder in `teletext/celp.py` works as follows:
 2. The vector gains are corrected with their Hamming check bits and looked up
    in the selected gain table. Pitch gains use a fixed table.
 3. The excitation for each subframe is the sum of the scaled excitation
-   vector and the scaled past excitation at the pitch lag. The real
-   excitation codebook is not known, so random noise is used instead and
-   the vector index is not used yet.
+   codebook vector and the scaled adaptive codebook vector. The adaptive
+   codebook vector is the past excitation from 20-147 samples ago (pitch
+   lag index + 20). When the lag is shorter than the 40 sample subframe the
+   last lag samples are repeated.
 4. The excitation is passed through an LPC synthesis filter built from the
    LSFs.
 
+
+OPEN PROBLEMS
+-------------
+
+What is known and what is not:
+
+| Part                     | State                                                              |
+|--------------------------|--------------------------------------------------------------------|
+| Bit layout               | Known, see above. Field boundaries are clearly visible in `celp plot`. |
+| Vector gain Hamming code | Verified: the table is a perfect Hamming (7,4) code over the top 4 bits of each 5 bit gain, every single bit error is corrected. Covered by `tests/test_celp.py`. |
+| Adaptive codebook        | Standard CELP structure, lags 20-147. The lag offset of 20 is assumed from the 7 bit field, as in FS-1016. |
+| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. `suddle` has a noted transposition in rows 7/8. |
+| Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. |
+| Pitch gain table         | Source not recorded in the code.                                   |
+| Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `-x gaussian`) are available. |
+
 Because the excitation codebook is missing, the output keeps the rough
-envelope and pitch of the original speech but sounds very noisy. Improving
-the tables and finding the codebook are open problems.
+envelope and pitch of the original speech but sounds noisy or whispered.
+
+The codec is described in Kondoz, "A speech coder for TV programme
+description", Eurospeech 1993, pp. 257-260
+(doi:10.21437/Eurospeech.1993-23), whose main contribution is "a new codebook
+implementation", and in Suddle's thesis. These are the most likely sources
+for the real codebook and the confirmed tables.
+
+Once the codebook is known it can be added to
+`CELPDecoder.excitation_codebooks` in `teletext/celp.py` as a (256, 40)
+array, which makes it available as a new `-x` choice.
+
+The tables can be checked against real recordings: with the right LSF table
+almost no frames of a good recording should be counted in `L`, and with the
+right gain tables the decoded level should follow the speech smoothly. When
+comparing tables, decode the same section of a recording (`--start`,
+`--stop`) with each choice and compare the `L` and `VG` rates and the sound.

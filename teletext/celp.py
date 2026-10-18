@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from spectrum import lsf2poly
 import numpy as np
 from scipy.signal import lfilter
-from collections import deque
 from tqdm import tqdm
 
 hamming7_dec = np.array([
@@ -26,19 +25,29 @@ hamming7_dec = np.array([
 ], dtype=np.uint8)
 
 class LtpCodebook:
+    """Adaptive (long term prediction) codebook.
+
+    Holds the most recent excitation samples. The vector for a lag L is the
+    excitation from L samples ago. When L is shorter than the subframe, those
+    L samples are repeated, as is usual in CELP decoders.
+    """
+
+    min_lag = 20
+    max_lag = 147
+
     def __init__(self, subframe_length):
-        #self.buffer = np.zeros((147, subframe_length), dtype=np.double)
-        #self.pos = 0
-        self.buffer = deque(maxlen=147)
+        self.subframe_length = subframe_length
+        self.history = np.zeros((self.max_lag, ), dtype=np.double)
 
     def insert(self, subframe):
-        self.buffer.extendleft(subframe)
+        self.history = np.concatenate((self.history, subframe))[-self.max_lag:]
 
     def get(self, lag):
-        try:
-            return self.buffer[lag + 20]
-        except IndexError:
-            return 0
+        """Return the adaptive codebook vector for a lag in samples."""
+        vector = np.empty((self.subframe_length, ), dtype=np.double)
+        for n in range(self.subframe_length):
+            vector[n] = self.history[n - lag] if n < lag else vector[n - lag]
+        return vector
 
 
 class CELPStats:
@@ -126,8 +135,18 @@ class CELPDecoder:
          1.062,  1.117,  1.193,  1.289,  1.394,  1.540,  1.765,  1.991,
     ])
 
-    def __init__(self, lsf_lut='suddle', vec_gain_lut='audetel', sample_rate=8000):
+    # The real excitation (fixed) codebook is not known. These are stand-ins:
+    # 'noise' ignores the vector index and plays running random noise,
+    # 'gaussian' is a fixed random codebook selected by the vector index.
+    # The real codebook, once found, can be added here as a (256, 40) array.
+    excitation_codebooks = {
+        'noise': None,
+        'gaussian': np.random.default_rng(0).normal(0, 1 / np.sqrt(3), size=(256, 40)),
+    }
+
+    def __init__(self, lsf_lut='suddle', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
         self.lsf_lut = lsf_lut
+        self.excitation_codebook = self.excitation_codebooks[excitation]
         self.lsf_vector_quantization = self.lsf_vector_quantizers[lsf_lut]
         self.vec_gain_quantization = self.vec_gain_quantizers[vec_gain_lut]
         self.sample_rate = sample_rate
@@ -171,8 +190,16 @@ class CELPDecoder:
         self.subframes += 4
         return lsf, pitch_gain, vector_gain, pitch_idx, vector_idx
 
-    # wave we're going to play through the filter
-    wave = np.random.uniform(-1, 1, size=(8000, ))
+    # noise played through the filter when no excitation codebook is used
+    wave = np.random.default_rng(0).uniform(-1, 1, size=(8000, ))
+
+    def excitation(self, vector_idx):
+        """Return the fixed codebook vector for an index."""
+        if self.excitation_codebook is None:
+            pos = self.pos + np.arange(1, self.subframe_length + 1)
+            self.pos += self.subframe_length
+            return self.wave[pos % self.sample_rate]
+        return self.excitation_codebook[vector_idx]
 
     def apply_lpc_filter(self, lsf, signal):
         """Convert line spectrum frequencies to a filter and apply to the signal."""
@@ -191,11 +218,9 @@ class CELPDecoder:
             sub_lsf = (self.last_lsf[np.newaxis, :] * self.lsf_weights[::-1, np.newaxis]) + (lsf[np.newaxis, :] * self.lsf_weights[:, np.newaxis])
 
         frame = np.empty((self.subframe_length * 4,), dtype=np.double)
-        subframe_buf = np.empty((self.subframe_length), dtype=np.double)
         for subframe in range(4):
-            for n in range(self.subframe_length):
-                self.pos += 1
-                subframe_buf[n] = (self.wave[self.pos % self.sample_rate] * vector_gain[subframe]) + (self.ltp_codebook.get(pitch_idx[subframe] - n) * pitch_gain[subframe])
+            subframe_buf = (self.excitation(vector_idx[subframe]) * vector_gain[subframe]) + \
+                           (self.ltp_codebook.get(pitch_idx[subframe] + LtpCodebook.min_lag) * pitch_gain[subframe])
             self.ltp_codebook.insert(subframe_buf)
             p = subframe * self.subframe_length
             frame[p:p + self.subframe_length] = self.apply_lpc_filter(sub_lsf[subframe], subframe_buf)
