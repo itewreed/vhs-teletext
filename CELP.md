@@ -220,7 +220,32 @@ What is known and what is not:
 | Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. In silent passages almost all vector gains use the four smallest values. In voiced speech those four are used rarely, which matches their narrow cells in both tables; the index histogram fits `audetel` slightly better. |
 | Pitch lag                | Confirmed: in a recording with speech on channel 2, consecutive subframes of voiced speech have nearly the same lag (lag + 20 between 39 and 99 samples, 80-200 Hz), and the lag continues smoothly into the next frame of the same channel 70% of the time, but only 19% of the time into the other channel. Silent frames use a lag of about 80. |
 | Pitch gain table         | Source not recorded in the code, but consistent with the data: in strongly voiced speech most pitch gains are 0.85-1.06, and index 8 is used ten times less than its neighbours, which matches its very narrow cell (0.19 / 0.26 / 0.37). |
-| Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `-x gaussian`) are available. |
+| Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `-x gaussian`) are available. See "Excitation codebook" below for what the recordings show. |
+
+### Excitation codebook
+
+The vector indexes of active subframes in the recordings show some
+structure, although not enough to reconstruct the vectors:
+
+* Indexes 0-179 (0x00-0xB3) are all used. 180-191 (0xB4-0xBF, except 0xB8
+  and 0xB9) and 224-255 (0xE0-0xFF) are almost never used, typically 1-5% of
+  the rate of the others, which is what bit errors alone would produce.
+  192-223 (0xC0-0xDF) are used at about 30% of the normal rate. The step at
+  180 is sharp (about 40 times) and the same on every clean recording, so
+  the codebook probably has fewer than 256 real entries, or the index is a
+  structured code with invalid values.
+* Index k and its complement 255-k are not used alike, so the codebook is
+  not a set of pulse signs where flipping all bits only flips the sign of
+  the vector (which would waste a bit, since the vector gain is signed).
+* The vector gain chosen depends on the index, which would reveal the
+  relative energy of each vector. Within one recording and channel this
+  relation is very reproducible (split half correlation up to 0.98), but it
+  differs between recordings and channels (correlation near 0), so it cannot
+  be used to estimate vector energies.
+
+The most promising sources for the real codebook are the Kondoz paper
+below, whose main contribution is the codebook, and chapter 7 of Suddle's
+thesis.
 
 Because the excitation codebook is missing, the output keeps the rough
 envelope and pitch of the original speech but sounds noisy or whispered.
