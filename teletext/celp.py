@@ -167,7 +167,7 @@ class CELPDecoder:
         'pame': _clipped_codebook.__func__(),
     }
 
-    def __init__(self, lsf_lut='suddle-ong9', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
+    def __init__(self, lsf_lut='suddle-ong9', vec_gain_lut='audetel', excitation='pame', sample_rate=8000):
         self.lsf_lut = lsf_lut
         self.excitation_type = excitation
         self.excitation_codebook = self.excitation_codebooks[excitation]

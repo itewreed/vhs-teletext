@@ -102,12 +102,13 @@ Options:
 * `-g/--gain-lut audetel|unknown` - quantizer table for the excitation vector
   gain. Default `audetel`.
 * `-x/--excitation noise|gaussian|clipped|pame` - stand-in for the unknown
-  excitation codebook (see "Open problems" below). `noise` (default) plays
-  running random noise and ignores the vector index. `gaussian` uses a fixed
-  random vector for each of the 256 indexes. `clipped` and `pame` follow the
+  excitation codebook (see "Open problems" below). `noise` plays running
+  random noise and ignores the vector index. `gaussian` uses a fixed random
+  vector for each of the 256 indexes. `clipped` and `pame` follow the
   codebook structure described in the Kondoz paper (see "Excitation
-  codebook" below), but with random contents. All are reproducible from run
-  to run.
+  codebook" below), but with random contents. `pame` (default) sounds the
+  most intelligible on the recordings tried so far. All are reproducible
+  from run to run.
 * `--start`, `--stop`, `--step`, `--limit` - select a range of packets by
   position in the file, as for other commands. For example, to decode the
   part of a recording containing one programme:

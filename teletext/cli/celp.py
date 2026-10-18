@@ -50,7 +50,7 @@ def celp():
               help='Line spectral frequency (LSF) quantizer table.')
 @click.option('-g', '--gain-lut', type=click.Choice(CELPDecoder.vec_gain_quantizers.keys()), default='audetel', show_default=True,
               help='Excitation vector gain quantizer table.')
-@click.option('-x', '--excitation', type=click.Choice(CELPDecoder.excitation_codebooks.keys()), default='noise', show_default=True,
+@click.option('-x', '--excitation', type=click.Choice(CELPDecoder.excitation_codebooks.keys()), default='pame', show_default=True,
               help='Stand-in for the unknown excitation codebook. noise: random noise, ignores the vector index. '
                    'gaussian: fixed random vector per index. clipped: overlapping centre-clipped random codebook. '
                    'pame: pitch-adaptive pulse trains followed by the clipped codebook (index mapping guessed).')
