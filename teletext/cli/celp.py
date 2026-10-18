@@ -42,10 +42,11 @@ def celp():
 
 @celp.command()
 @click.option('-f', '--frame', type=click.IntRange(0, 1), default=None,
-              help='Each packet holds two 20 ms audio frames. Decode only frame 0 or frame 1. Default: both, in order.')
+              help='Each packet holds two 20 ms audio frames. Decode only frame 0 or frame 1. Default: both, in order, '
+                   'or only frame 0 (channel 1) in two channel mode.')
 @click.option('-o', '--output', type=click.File('wb'),
               help='Write audio to this WAV file (8 kHz, 16 bit, mono) instead of playing it.')
-@click.option('-l', '--lsf-lut', type=click.Choice(CELPDecoder.lsf_vector_quantizers.keys()), default='suddle', show_default=True,
+@click.option('-l', '--lsf-lut', type=click.Choice(CELPDecoder.lsf_vector_quantizers.keys()), default='ong', show_default=True,
               help='Line spectral frequency (LSF) quantizer table.')
 @click.option('-g', '--gain-lut', type=click.Choice(CELPDecoder.vec_gain_quantizers.keys()), default='audetel', show_default=True,
               help='Excitation vector gain quantizer table.')
@@ -65,13 +66,16 @@ def play(progress, frame, output, lsf_lut, gain_lut, excitation, packets):
     with errors detected by their Hamming check bits. High values point to
     a bad recording, a wrong data channel or a wrong quantizer table.
 
+    Packets that contain text (test and talkback messages) are played as
+    silence. In two channel mode only channel 1 is played unless -f is given.
+
     Warning: Will make a horrible noise.
 
     \b
     Examples:
       teletext celp play -d 4 stream.t42
       teletext celp play -d 4 -f 0 -o frame0.wav stream.t42
-      teletext celp play -d 4 -l ong -g unknown stream.t42
+      teletext celp play -d 4 -l suddle -g unknown stream.t42
       teletext celp play -d 4 -x gaussian -o gaussian.wav stream.t42
     """
     dec = CELPDecoder(lsf_lut=lsf_lut, vec_gain_lut=gain_lut, excitation=excitation)

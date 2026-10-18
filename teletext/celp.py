@@ -5,6 +5,10 @@ import numpy as np
 from scipy.signal import lfilter
 from tqdm import tqdm
 
+from teletext.coding import hamming8_decode
+
+odd_parity = np.array([bin(n).count('1') & 1 for n in range(256)], dtype=bool)
+
 hamming7_dec = np.array([
     [ 0x00, 0x10, 0x10, 0x14, 0x10, 0x11, 0x18, 0x12 ],
     [ 0x10, 0x11, 0x13, 0x19, 0x11, 0x01, 0x15, 0x11 ],
@@ -144,7 +148,7 @@ class CELPDecoder:
         'gaussian': np.random.default_rng(0).normal(0, 1 / np.sqrt(3), size=(256, 40)),
     }
 
-    def __init__(self, lsf_lut='suddle', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
+    def __init__(self, lsf_lut='ong', vec_gain_lut='audetel', excitation='noise', sample_rate=8000):
         self.lsf_lut = lsf_lut
         self.excitation_codebook = self.excitation_codebooks[excitation]
         self.lsf_vector_quantization = self.lsf_vector_quantizers[lsf_lut]
@@ -155,14 +159,15 @@ class CELPDecoder:
         self.vector_gain_errors = 0
         self.lsf_errors = 0
         self.subframes = 0
+        self.text_frames = 0
 
     @property
     def lsf_error(self):
-        return 100.0 * self.lsf_errors / self.subframes
+        return 100.0 * self.lsf_errors / max(self.subframes, 1)
 
     @property
     def vector_gain_error(self):
-        return 100.0 * self.vector_gain_errors / self.subframes
+        return 100.0 * self.vector_gain_errors / max(self.subframes, 1)
 
     def stats(self):
         return CELPStats(self)
@@ -228,16 +233,52 @@ class CELPDecoder:
         self.last_lsf = lsf
         return np.clip(frame * 0.5, -32767, 32767).astype(np.int16)
 
+    @staticmethod
+    def is_text(packet):
+        """True if the packet holds a text message instead of audio.
+
+        Test transmissions and talkback messages ("Audetel Test000001 Zero
+        fade", "Test Talkback 0010 Address =88") are sent as odd parity text
+        in the same packets. Random audio data almost never has odd parity
+        in 34 or more of its 38 bytes.
+        """
+        return np.count_nonzero(odd_parity[packet._array[4:42]]) >= 34
+
+    @staticmethod
+    def is_two_channel(packet):
+        """True if the packet's service byte selects a two channel mode.
+
+        In two channel mode frame 0 of each packet belongs to channel 1 and
+        frame 1 to channel 2. This was verified for service 5 on a recording;
+        service 7 is assumed to work the same way.
+        """
+        if packet.mrag.row != 31:
+            return False
+        service = hamming8_decode(packet._array[2])
+        return service in (5, 7)
+
     def decode_packet_stream(self, packets, frame=None):
-        """Decode an entire packet stream, yielding audio frames."""
+        """Decode an entire packet stream, yielding audio frames.
+
+        frame selects frame 0 or 1 of each packet. If it is None both frames
+        are decoded in order, except in two channel mode, where only frame 0
+        (channel 1) is decoded. Text packets are replaced with silence.
+        """
         self.last_lsf = None
         self.last_z = np.zeros((10, ))
         self.ltp_codebook = LtpCodebook(self.subframe_length)
+        silence = np.zeros((self.subframe_length * 4, ), dtype=np.int16)
         for p in packets:
-            if frame is None or frame == 0:
-                yield self.generate_audio(p._array[4:23])
-            if frame is None or frame == 1:
-                yield self.generate_audio(p._array[23:42])
+            frames = (0, 1) if frame is None else (frame, )
+            if frame is None and self.is_two_channel(p):
+                frames = (0, )
+            text = self.is_text(p)
+            for f in frames:
+                if text:
+                    self.text_frames += 1
+                    yield silence
+                else:
+                    yield self.generate_audio(p._array[4 + (f * 19):23 + (f * 19)])
 
     def stream_pcm(self, packets, frame, device):
         src = self.decode_packet_stream(packets, frame)

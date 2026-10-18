@@ -52,6 +52,27 @@ and error count of each line.
 Every `teletext celp` command needs the data channel to read, given with
 `-d/--dcn`. Use `-d 4` for Audetel.
 
+Some packets contain text instead of audio, sent with odd parity like normal
+teletext. Test transmissions use messages such as `Audetel Test000001 Zero
+fade` and `Test Talkback 0010 Address =88`, which can be read with
+`-o text`. `celp play` detects these packets and outputs silence for them.
+
+### Single and two channel modes
+
+The service byte of DCN 12 packets selects the channel mode (see "Packet
+format" below). In single channel mode the two frames of a packet follow
+each other in time. In "Two-channel mode using 2 VBI lines per frame"
+(service 5) frame 0 of every packet belongs to channel 1 and frame 1 to
+channel 2: on a recording in this mode the LSFs of consecutive frame 0s are
+correlated, while frame 0 and frame 1 of the same packet are as unrelated as
+two random frames. One packet per field arrives, so each channel gets 50
+frames of 20 ms per second, which is real time.
+
+`celp play` therefore decodes only channel 1 (frame 0) of two channel
+packets unless `-f` is given. Use `-f 1` for channel 2. Service 7
+("Two-channel Mode using 4 VBI lines per frame") is assumed to work the same
+way but has not been checked.
+
 
 DECODING AUDIO
 --------------
@@ -70,11 +91,12 @@ Options:
 * `-d/--dcn N` - data channel to decode (required, see above).
 * `-o/--output FILE` - write a WAV file instead of playing the audio.
 * `-f/--frame 0|1` - each packet holds two audio frames. By default both are
-  decoded, in order. `-f 0` or `-f 1` decodes only one of them and skips the
-  other, which is useful when investigating the format.
+  decoded, in order, except in two channel mode, where only frame 0
+  (channel 1) is decoded. `-f 0` or `-f 1` decodes only one of them and skips
+  the other. In two channel mode this selects the channel.
 * `-l/--lsf-lut ong|suddle` - quantizer table for the line spectral
   frequencies (LSF), which describe the shape of the vocal tract. Default
-  `suddle`.
+  `ong` (see "Open problems" for why).
 * `-g/--gain-lut audetel|unknown` - quantizer table for the excitation vector
   gain. Default `audetel`.
 * `-x/--excitation noise|gaussian` - stand-in for the unknown excitation
@@ -191,8 +213,9 @@ What is known and what is not:
 | Bit layout               | Known, see above. Field boundaries are clearly visible in `celp plot`. |
 | Vector gain Hamming code | Verified: the table is a perfect Hamming (7,4) code over the top 4 bits of each 5 bit gain, every single bit error is corrected. Covered by `tests/test_celp.py`. |
 | Adaptive codebook        | Standard CELP structure, lags 20-147. The lag offset of 20 is assumed from the 7 bit field, as in FS-1016. |
-| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. `suddle` has a noted transposition in rows 7/8. |
-| Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. |
+| LSF tables               | Taken from Suddle and Ong. Neither is confirmed to be the table Audetel used. Measured on a real two channel recording (about 60,000 packets), `suddle` gives LSF 8 above LSF 9 in 46-54% of frames, because its row for LSF 9 (2347-3202 Hz) overlaps the row for LSF 8. With `ong` only 3-9% of frames are out of order, almost all of them LSF 3 above LSF 4. `ong` is therefore the default. |
+| Vector gain tables       | `audetel` from Suddle chapter 7, `unknown` from chapter 5. Not confirmed against real data. On the recording above 95% of vector gains use the four smallest values, which fits a channel that is silent most of the time. |
+| Pitch lag continuity     | Unexplained: in loud passages of the recording above, the pitch lags of consecutive subframes are no more similar than random lags. In voiced speech they should change slowly, so either those passages are not speech or the lag field is not yet understood. |
 | Pitch gain table         | Source not recorded in the code.                                   |
 | Excitation codebook      | Unknown. Only stand-ins (`-x noise`, `-x gaussian`) are available. |
 

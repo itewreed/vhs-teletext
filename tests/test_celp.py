@@ -68,3 +68,43 @@ class TestDecoder(unittest.TestCase):
 
     def test_deterministic(self):
         np.testing.assert_array_equal(self.decode(), self.decode())
+
+
+@unittest.skipIf(CELPDecoder is None, 'CELP decoding not available (needs the audio extra).')
+class TestPacketTypes(unittest.TestCase):
+
+    def packet(self, row, service, data):
+        from teletext.packet import Packet
+        from teletext.coding import hamming8_encode
+        p = Packet()
+        p.mrag.magazine = 4
+        p.mrag.row = row
+        p._array[2] = hamming8_encode(service)
+        p._array[3] = hamming8_encode(1)
+        p._array[4:] = data
+        return p
+
+    def test_text(self):
+        text = np.frombuffer(b'Audetel Test000001 Zero fade          ', dtype=np.uint8)
+        parity = np.array([bin(n).count('1') & 1 for n in range(128)])
+        text = text | ((1 - parity[text]) << 7).astype(np.uint8)
+        self.assertTrue(CELPDecoder.is_text(self.packet(30, 0, text)))
+        audio = np.random.default_rng(1).integers(0, 256, size=38, dtype=np.uint8)
+        self.assertFalse(CELPDecoder.is_text(self.packet(30, 0, audio)))
+
+    def test_text_is_silent(self):
+        text = np.full(38, 0x20, dtype=np.uint8)  # 0x20 has odd parity
+        dec = CELPDecoder()
+        frames = list(dec.decode_packet_stream([self.packet(30, 0, text)]))
+        self.assertEqual(len(frames), 2)
+        self.assertFalse(np.any(frames[0]))
+
+    def test_two_channel(self):
+        audio = np.random.default_rng(1).integers(0, 256, size=38, dtype=np.uint8)
+        two = self.packet(31, 5, audio)
+        one = self.packet(30, 0, audio)
+        self.assertTrue(CELPDecoder.is_two_channel(two))
+        self.assertFalse(CELPDecoder.is_two_channel(one))
+        self.assertEqual(len(list(CELPDecoder().decode_packet_stream([two]))), 1)
+        self.assertEqual(len(list(CELPDecoder().decode_packet_stream([one]))), 2)
+        self.assertEqual(len(list(CELPDecoder().decode_packet_stream([two], frame=1))), 1)
